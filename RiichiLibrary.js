@@ -1344,10 +1344,10 @@ var lib = {
 	Tile: Tile,
 	Hand: Hand,
 };
-if(module){
+if(typeof module != 'undefined'){
 	module.exports = lib;
 }
-if(window){
+if(typeof window != 'undefined'){
 	window.Riichi = lib;
 }
 })();
