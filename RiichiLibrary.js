@@ -1,3 +1,4 @@
+(function(){
 /**
  *	Represents a tile
  *	@example new Tile({ index: 4})
@@ -1339,7 +1340,14 @@ function HandCalculator(hand){
 	};
 }());
 
-module.exports = {
+var lib = {
 	Tile: Tile,
 	Hand: Hand,
 };
+if(module){
+	module.exports = lib;
+}
+if(window){
+	window.Riichi = lib;
+}
+})();
