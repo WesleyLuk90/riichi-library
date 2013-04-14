@@ -370,7 +370,19 @@ function PointCalculator(handDivision, options){
 			this.pair = remainingMelds[0];
 			if(remainingMelds[1].isPair()){
 				// If both things are pairs then it is shanpon
-				this.wait = remainingMelds[1];
+				if(this.winningTile){
+					// Find which one is the pair and which is the wait
+					if(remainingMelds[0].getRepresentitiveTile().getIndex() == this.winningTile.getIndex()){
+						this.wait = remainingMelds[0];
+						this.pair = remainingMelds[1];
+					} else {
+						this.wait = remainingMelds[1];
+						this.pair = remainingMelds[0];
+					}
+				} else {
+					// No winning tile, assign arbintarily
+					this.wait = remainingMelds[1];
+				}
 			} else {
 				// Otherwise the wait is an incomplete meld
 				this.wait = remainingMelds[1];
@@ -417,6 +429,7 @@ function PointCalculator(handDivision, options){
 		} else {
 			points = this.calculateNormal();
 		}
+		this.tallyPoints(points);
 		return points;
 	};
 	PointCalculator.prototype.tallyPoints = function(points){
@@ -465,7 +478,151 @@ function PointCalculator(handDivision, options){
 		if(options.openRiichi) breakdown.OpenRiichi = 2;
 		if(points.SanAnKou) breakdown.SanAnKou = 2;
 		if(points.SanKanTsu) breakdown.SanKanTsu = 2;
+		if(points.SanShokuDouJun){
+			if(semiClosed){
+				breakdown.SanShokuDouJun = 2;
+			} else {
+				breakdown.SanShokuDouJun = 1;
+			}
+		}
+		if(points.SanShokuDouKou) breakdown.SanShokuDouKou = 2;
+		if(points.ToiToi) breakdown.ToiToi = 2;
+		if(points.HonItsu){
+			if(semiClosed){
+				breakdown.HonItsu = 3;
+			} else {
+				breakdown.HonItsu = 2;
+			}
+		}
+		if(points.JunChanta){
+			if(semiClosed){
+				breakdown.JunChanta = 3;
+			} else {
+				breakdown.JunChanta = 2;
+			}
+		}
+		if(points.RyanPeiKou && !points.ChiToiTsu) breakdown.RyanPeiKou = 3;
+		if(points.ShouSanGen) breakdown.ShouSanGen = 2;
+		if(points.ChinItsu){
+			if(semiClosed){
+				breakdown.ChinItsu = 6;
+			} else {
+				breakdown.ChinItsu = 5;
+			}
+		}
+		points.han = 0;
+		for (var point in breakdown){
+			points.han += breakdown[point];
+		}
+		points.fuBreakdown = this.calculateFu();
 
+		var fu = points.fuBreakdown.total;
+		var han = points.han;
+		var basePoints = fu * Math.pow(2, han + 2);
+		if(basePoints >= 2000){
+			basePoints = this.getLimitHand(han);
+		}
+		if(this.options.seatWind == Tile.EAST){
+			if(this.options.tsumo){
+				points.othersPay = Math.round(basePoints * 2 / 100) * 100;
+				points.dealerPays = 0;
+			} else {
+				points.othersPay = Math.round(basePoints * 6 / 100) * 100;
+				points.dealerPays = 0;
+			}
+		} else {
+			if(this.options.tsumo){
+				points.othersPay = Math.round(basePoints / 100) * 100;
+				points.dealerPays = Math.round(basePoints * 2 / 100) * 100;
+			} else {
+				points.othersPay = Math.round(basePoints * 4/ 100) * 100;
+				points.dealerPays = 0;
+			}
+		}
+	};
+	PointCalculator.prototype.getLimitHand = function(han){
+		if(han <= 5){
+			return 2000;
+		} else if(han == 6 || han == 7){
+			return 3000;
+		} else if(8 <= han && han <= 10){
+			return 4000;
+		} else if(11 <= han && han <= 12){
+			return 6000;
+		} else {
+			return 8000;
+		}
+	};
+	PointCalculator.prototype.calculateFu = function(){
+		var fuBreakdown = {
+			minkou: 0,
+			ankou: 0,
+			endMinkou: 0,
+			endAnkou: 0,
+			tsumo: 0,
+			kanchanMachi: 0,
+			penchanMachi: 0,
+			tankiMachi: 0,
+			pair: 0,
+			total: 20,
+		};
+		if(this.isPinFu()){
+			if(this.options.tsumo){
+				fuBreakdown.total = 30;
+				return fuBreakdown;
+			} else {
+				fuBreakdown.total = 20;
+				return fuBreakdown;
+			}
+		}
+		if(this.isChiToiTsu){
+			fuBreakdown.chitoitsu = 25;
+			fuBreakdown.total = 25;
+			return fuBreakdown;
+		}
+		if(this.options.tsumo) fuBreakdown.total += 2;
+		// Handle closed melds
+		for (var i = 0; i < this.melds.length; i++) {
+			var meld = this.melds[i];
+			if(meld.isPon()){
+				if(meld.isEnd()){
+					fuBreakdown.endAnkou += 8;
+					fuBreakdown.total += 8;
+				} else {
+					fuBreakdown.endAnkou += 4;
+					fuBreakdown.total += 4;
+				}
+			}
+		};
+		// Handle open melds
+		for (var i = 0; i < this.openMelds.length; i++) {
+			var meld = this.openMelds[i];
+			if(meld.isPon()){
+				if(meld.isEnd()){
+					fuBreakdown.endAnkou += 4;
+					fuBreakdown.total += 4;
+				} else {
+					fuBreakdown.endAnkou += 2;
+					fuBreakdown.total += 2;
+				}
+			}
+		};
+		if(this.pair && this.pair.getRepresentitiveTile().isHonor()){
+			var tile = this.pair.getRepresentitiveTile().getNumber();
+			if(tile == Tile.HAKU || tile == Tile.HATSU || tile == Tile.CHUN){
+				fuBreakdown.pair += 2;
+				fuBreakdown.total += 2;
+			}
+			if(tile == this.options.roundWind){
+				fuBreakdown.pair += 2;
+				fuBreakdown.total += 2;
+			}
+			if(tile == this.options.seatWind){
+				fuBreakdown.pair += 2;
+				fuBreakdown.total += 2;
+			}
+		}
+		return fuBreakdown;
 	};
 	PointCalculator.prototype.calculateNormal = function(){
 		var points = {}
