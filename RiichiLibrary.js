@@ -158,13 +158,37 @@ var Hand = function(value){
 		throw "Invalid parameters";
 	}
 
-	var handCalculator = new HandCalculator(this.hand);
-	this.bestShanten = handCalculator.bestShanten;
-	this.validHands = handCalculator.getValidHands();
+	this.handCalculator = new HandCalculator(this.hand);
+	this.bestShanten = this.handCalculator.bestShanten;
+	this.validHands = this.handCalculator.getValidHands();
 };
 (function(){
 	Hand.prototype.numberOfCombinations = function(){
 		return this.validHands.length;
+	};
+
+	Hand.prototype.isValid = function(){
+		return this.handCalculator.isValid();
+	};
+
+	Hand.prototype.getBestPoints = function(){
+		var bestHandPoints = {han:0, fu:0};
+		for (var i = 0; i < this.validHands.length; i++) {
+			var hand = this.validHands[i];
+			var points = hand.calculatePoints();
+			if(points){
+				if(bestHandPoints.han < points.han){
+					bestHandPoints = points;
+				} else if(bestHandPoints.han == points.han && bestHandPoints.fu < points.fu){
+					bestHandPoints = points;
+				}
+			}
+		};
+		return bestHandPoints;
+	};
+
+	Hand.prototype.getShanten = function(){
+		return this.bestShanten;
 	};
 
 	Hand.prototype.convertHandToString = function(input){
@@ -322,6 +346,10 @@ function PointCalculator(handDivision, options){
 	this.openMelds = handDivision.openMelds;
 	this.winningTile = handDivision.winningTile;
 
+	if(!this.winningTile){
+		return;
+	}
+
 	// Create a list of all tiles in the hand
 	var tiles = [];
 	// Melds
@@ -367,29 +395,24 @@ function PointCalculator(handDivision, options){
 		};
 	} else {
 		// Normal other wait
-		if(remainingMelds[0].isPair()){
-			this.pair = remainingMelds[0];
-			if(remainingMelds[1].isPair()){
-				// If both things are pairs then it is shanpon
-				if(this.winningTile){
-					// Find which one is the pair and which is the wait
-					if(remainingMelds[0].getRepresentitiveTile().getIndex() == this.winningTile.getIndex()){
-						this.wait = remainingMelds[0];
-						this.pair = remainingMelds[1];
-					} else {
-						this.wait = remainingMelds[1];
-						this.pair = remainingMelds[0];
-					}
-				} else {
-					// No winning tile, assign arbintarily
-					this.wait = remainingMelds[1];
-				}
+		var onePair = remainingMelds[0].isPair();
+		var twoPairs = remainingMelds[1].isPair();
+		if(onePair && twoPairs){
+			// Shanpon case
+			// Determine which pair is the winning set
+			if(this.winningTile.getIndex() == remainingMelds[0].getRepresentitiveTile().getIndex()){
+				this.wait = remainingMelds[0];
+				this.pair = remainingMelds[1];
 			} else {
-				// Otherwise the wait is an incomplete meld
 				this.wait = remainingMelds[1];
+				this.pair = remainingMelds[0];
 			}
-		} else if(remainingMelds[1].isPair()){
-			// Can't be shanpon so must be meld
+		} else if(onePair){
+			// First meld is the pair
+			this.wait = remainingMelds[1];
+			this.pair = remainingMelds[0];
+		} else if(twoPairs){
+			// Second meld is the pair
 			this.wait = remainingMelds[0];
 			this.pair = remainingMelds[1];
 		}
@@ -420,8 +443,9 @@ function PointCalculator(handDivision, options){
 
 (function(){
 	PointCalculator.prototype.isValidWait = function(){
-		return this.shanten == 0 && (
-			this.winningMeld.isPon() || this.winningMeld.isChi() || this.winningMeld.isPair());
+		return this.shanten == 0 && 
+			this.winningTile &&
+			(this.winningMeld.isPon() || this.winningMeld.isChi() || this.winningMeld.isPair());
 	};
 	PointCalculator.prototype.calculate = function(){
 		var points;
@@ -488,7 +512,7 @@ function PointCalculator(handDivision, options){
 		}
 		if(points.SanShokuDouKou) breakdown.SanShokuDouKou = 2;
 		if(points.ToiToi) breakdown.ToiToi = 2;
-		if(points.HonItsu){
+		if(points.HonItsu && !points.ChinItsu){
 			if(semiClosed){
 				breakdown.HonItsu = 3;
 			} else {
@@ -586,7 +610,7 @@ function PointCalculator(handDivision, options){
 		for (var i = 0; i < this.melds.length; i++) {
 			var meld = this.melds[i];
 			if(meld.isPon()){
-				if(meld.isEnd()){
+				if(meld.getRepresentitiveTile().isEnd()){
 					fuBreakdown.endAnkou += 8;
 					fuBreakdown.total += 8;
 				} else {
@@ -1154,14 +1178,15 @@ function HandCalculator(hand){
 	this.bestShanten = 100;
 	this.validHands = [];
 
-	if(this.tileCount % 3 == 0){
-		throw "Invalid hand, cant have " + tiles + " tiles";
-	}
 	this.meldsNeeded = Math.floor(this.tileCount / 3);
 
 	this.calculate();
 };
 (function(){
+	HandCalculator.prototype.isValid = function(){
+		console.log(this.tileCount % 3 == 0);
+		return !(this.tileCount % 3 == 0);
+	};
 	HandCalculator.prototype.calculate = function(){
 		this.checkChiToi();
 		this.runCalculation(0);

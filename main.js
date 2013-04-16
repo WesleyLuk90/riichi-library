@@ -5,8 +5,8 @@ var Hand = RiichiLibrary.Hand;
 
 console.time("Calculating shanten");
 // var hand = new Hand({ text:"11122233377h11p" });
-var hand = new Hand({ text:"11223344557m66h" });
-hand.setWinningTile(new Tile({text:"7m"}));
+var hand = new Hand({ text:"1112223334445m" });
+hand.setWinningTile(new Tile({text:"5m"}));
 hand.setOptions({
 	roundWind: Tile.EAST,
 	seatWind: Tile.WEST,
