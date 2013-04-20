@@ -5,8 +5,8 @@ var Hand = RiichiLibrary.Hand;
 
 console.time("Calculating shanten");
 // var hand = new Hand({ text:"11122233377h11p" });
-var hand = new Hand({ text:"1112223334445m" });
-hand.setWinningTile(new Tile({text:"5m"}));
+var hand = new Hand({ text:"7777777777777h" });
+hand.setWinningTile(new Tile({text:"7h"}));
 hand.setOptions({
 	roundWind: Tile.EAST,
 	seatWind: Tile.WEST,
@@ -18,3 +18,4 @@ for(var i = 0; i < hand.numberOfCombinations(); i++){
 	// console.log(combination.toString());
 	console.log(combination.print());
 }
+console.log(hand.getWaits());

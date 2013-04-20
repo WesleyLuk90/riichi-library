@@ -14,11 +14,12 @@ var Tile = function(value){
 	} else if(value.number && value.suit){
 		this.setFromNumberAndSuit(value.number, value.suit);
 	} else if(value.text) {
-		if(value.text.length != 2){
-			throw new Error("Invalid text value specified");
+		var text = value.text.trim();
+		if(text.length != 2){
+			throw new Error("Invalid text value specified:" + text);
 		}
-		var number = value.text[0];
-		var suit = value.text[1];
+		var number = text[0];
+		var suit = text[1];
 		this.setFromNumberAndSuit(number, suit);
 	} else {
 		throw new Error("Value not specified for Tile");
@@ -58,8 +59,12 @@ var Tile = function(value){
 			case Tile.SUIT_HONOR:
 				return "h";
 			default:
-				throw "Invalid index to convert:" + index;
+				throw new Error("Invalid index to convert:" + index);
 		}
+	};
+
+	Tile.createTileFromString = function(string){
+		return new Tile({text:string});
 	};
 
 	Tile.getNumberFromIndex = function(index){
@@ -69,8 +74,39 @@ var Tile = function(value){
 		return index % Tile.TILES_PER_SUIT + 1;
 	};
 
+	Tile.getDoraFromIndicator = function(text){
+		var tile = new Tile({text: text});
+		var number = tile.getNumber();
+		var suit = tile.getSuit();
+		if(tile.isHonor()){
+			switch(number){
+				case Tile.EAST:
+					return new Tile({number:Tile.SOUTH, suit:suit}).toString();
+				case Tile.SOUTH:
+					return new Tile({number:Tile.WEST, suit:suit}).toString();
+				case Tile.WEST:
+					return new Tile({number:Tile.NORTH, suit:suit}).toString();
+				case Tile.NORTH:
+					return new Tile({number:Tile.EAST, suit:suit}).toString();
+
+				case Tile.HAKU:
+					return new Tile({number:Tile.HATSU, suit:suit}).toString();
+				case Tile.HATSU:
+					return new Tile({number:Tile.CHUN, suit:suit}).toString();
+				case Tile.CHUN:
+					return new Tile({number:Tile.HAKU, suit:suit}).toString();
+			}
+			throw new Error("Invalid number");
+		}
+		if(number == Tile.MAX_NUMBER){
+			return new Tile({number:Tile.MIN_NUMBER, suit:suit}).toString();
+		}
+		return new Tile({number:number + 1, suit:suit}).toString();
+	};
+
 	// Methods
 	Tile.prototype.setFromNumberAndSuit = function(number, suit){
+		number = parseInt(number);
 		if(!(Tile.MIN_NUMBER <= number && number <= Tile.MAX_NUMBER)){
 			throw "Invalid number, out of range " + number;
 		}
@@ -131,6 +167,9 @@ var Tile = function(value){
 			this.number == Tile.CHUN
 		);
 	};
+	Tile.prototype.equals = function(tile){
+		return this.number == tile.number && this.suit == tile.suit;
+	}
 }());
 /**
  *	An object representing a hand
@@ -187,6 +226,29 @@ var Hand = function(value){
 		return bestHandPoints;
 	};
 
+	Hand.prototype.getWaits = function(){
+		// No waits if the shanten is not 0
+		if(this.bestShanten != 0){
+			return [];
+		}
+		var allWaits = {};
+		for (var i = 0; i < this.validHands.length; i++) {
+			var hand = this.validHands[i];
+			var waits = hand.getWaits();
+			for (var j = 0; j < waits.length; j++) {
+				allWaits[waits[j].getIndex()] = true;
+			};
+		};
+		var returnWaits = [];
+		for (var i = 0; i <= Tile.MAX_INDEX; i++) {
+			// console.log(i, allWaits[i]);
+			if(allWaits[i]){
+				returnWaits.push(new Tile({index: i}));
+			}
+		};
+		return returnWaits;
+	};
+
 	Hand.prototype.getShanten = function(){
 		return this.bestShanten;
 	};
@@ -224,6 +286,12 @@ var Hand = function(value){
 	Hand.prototype.addOpenMeld = function(meld){
 		for (var i = 0; i < this.validHands.length; i++) {
 			this.validHands[i].addOpenMeld(meld);
+		}
+	};
+
+	Hand.prototype.addClosedKan = function(meld){
+		for (var i = 0; i < this.validHands.length; i++) {
+			this.validHands[i].addClosedKan(meld);
 		}
 	};
 }());
@@ -287,14 +355,8 @@ function Meld(tiles, open){
 			return false;
 		}
 		// Get the smaller and larger value
-		var smaller, larger;
-		if(this.tiles[0].getNumber() < this.tiles[1].getNumber()){
-			smaller = this.tiles[0].getNumber();
-			larger = this.tiles[1].getNumber();
-		} else {
-			smaller = this.tiles[1].getNumber();
-			larger = this.tiles[0].getNumber();
-		}
+		var smaller	= this.tiles[0].getNumber();
+		var larger = this.tiles[1].getNumber();
 		// Must be sequential
 		if(smaller != larger - 1){
 			return false;
@@ -307,6 +369,37 @@ function Meld(tiles, open){
 			return false;
 		}
 		return true;
+	};
+	Meld.prototype.isCenterWait = function(){
+		if(this.tiles.length != 2){
+			return false;
+		}
+		// Must not be honor tiles
+		if(this.tiles[0].isHonor() || this.tiles[1].isHonor()){
+			return false;
+		}
+		// Get the smaller and larger value
+		var smaller	= this.tiles[0].getNumber();
+		var larger = this.tiles[1].getNumber();
+		return smaller == larger - 2;
+	};
+	Meld.prototype.isEdgeWait = function(){
+		if(this.tiles.length != 2){
+			return false;
+		}
+		// Must not be honor tiles
+		if(this.tiles[0].isHonor() || this.tiles[1].isHonor()){
+			return false;
+		}
+		// Get the smaller and larger value
+		var smaller	= this.tiles[0].getNumber();
+		var larger = this.tiles[1].getNumber();
+
+		if(smaller != larger - 1){
+			return false;
+		}
+		return smaller == Tile.MIN_NUMBER || larger == Tile.MAX_NUMBER;
+
 	};
 	Meld.prototype.equals = function(meld){
 		return this.tiles[0].getIndex() == meld.tiles[0].getIndex() &&
@@ -333,6 +426,11 @@ function Meld(tiles, open){
 		}
 		return this.tiles[0];
 	};
+	Meld.prototype.toString = function(){
+		return this.tiles.map(function(tile){
+			return tile.toString();
+		}).join(",");
+	};
 }());
 
 function PointCalculator(handDivision, options){
@@ -341,14 +439,10 @@ function PointCalculator(handDivision, options){
 	this.han = 0;
 	this.fu = 0;
 
-	this.melds = handDivision.melds;
+	this.melds = [].concat(handDivision.melds, handDivision.closedKans);
 	this.shanten = handDivision.shanten;
 	this.openMelds = handDivision.openMelds;
 	this.winningTile = handDivision.winningTile;
-
-	if(!this.winningTile){
-		return;
-	}
 
 	// Create a list of all tiles in the hand
 	var tiles = [];
@@ -400,10 +494,11 @@ function PointCalculator(handDivision, options){
 		if(onePair && twoPairs){
 			// Shanpon case
 			// Determine which pair is the winning set
-			if(this.winningTile.getIndex() == remainingMelds[0].getRepresentitiveTile().getIndex()){
+			if(this.winningTile && this.winningTile.getIndex() == remainingMelds[0].getRepresentitiveTile().getIndex()){
 				this.wait = remainingMelds[0];
 				this.pair = remainingMelds[1];
 			} else {
+				// Opposite case or no winning tile so we can choose arbitrarily
 				this.wait = remainingMelds[1];
 				this.pair = remainingMelds[0];
 			}
@@ -418,30 +513,69 @@ function PointCalculator(handDivision, options){
 		}
 	}
 
-	// Find the winning meld
-	if(this.wait.isPair()){
-		// Possible shanpon
-		if(this.wait.getRepresentitiveTile().getIndex() == this.winningTile.getIndex()){
-			this.winningMeld = new Meld([this.winningTile].concat(this.wait.getTiles()), true);
+	if(this.winningTile){
+		// Find the winning meld
+		if(this.wait.isPair()){
+			// Possible shanpon
+			if(this.wait.getRepresentitiveTile().getIndex() == this.winningTile.getIndex()){
+				this.winningMeld = new Meld([this.winningTile].concat(this.wait.getTiles()), true);
+			} else {
+				this.winningMeld = new Meld([this.winningTile].concat(this.pair.getTiles()), true);
+			}
 		} else {
-			this.winningMeld = new Meld([this.winningTile].concat(this.pair.getTiles()), true);
+			this.winningMeld = new Meld([this.winningTile].concat(this.wait.getTiles()), true);
 		}
-	} else {
-		this.winningMeld = new Meld([this.winningTile].concat(this.wait.getTiles()), true);
+		// all the melds in the hand
+		if(!this.winningMeld.isPair()){
+			this.allMelds = [this.winningMeld].concat(this.completeMelds);
+		} else {
+			this.allMelds = [].concat(this.completeMelds);
+		}
 	}
 
 	// Flag for semi closed hands
 	this.semiClosed = this.openMelds.length == 0;
-
-	// all the melds in the hand
-	if(!this.winningMeld.isPair()){
-		this.allMelds = [this.winningMeld].concat(this.completeMelds);
-	} else {
-		this.allMelds = [].concat(this.completeMelds);
-	}
 }
 
 (function(){
+	PointCalculator.prototype.getWaits = function(){
+		if(!this.wait){
+			return [];
+		}
+		if(this.wait.isPair()){
+			// Shanpon
+			var tile1 = new Tile({index: this.wait.getRepresentitiveTile().getIndex()});
+			var tile2 = new Tile({index: this.pair.getRepresentitiveTile().getIndex()});
+			return [tile1, tile2];
+		}
+		if(this.wait.isTanki()){
+			var tile1 = new Tile({index: this.wait.getRepresentitiveTile().getIndex()});
+			return [tile1];
+		}
+		if(this.wait.isTwoSided()){
+			var index = this.wait.getFirstTile().getIndex();
+			var tile1 = new Tile({index: index - 1});
+			var tile2 = new Tile({index: index + 2});
+			return [tile1, tile2];
+		}
+		if(this.wait.isCenterWait()){
+			var index = this.wait.getFirstTile().getIndex();
+			return [new Tile({index: index + 1})];
+		}
+		if(this.wait.isEdgeWait()){
+			var index = this.wait.getFirstTile().getIndex();
+			var number = this.wait.getFirstTile().getNumber();
+			if(number == Tile.MIN_NUMBER){
+				return [new Tile({index: index + 2})];
+			} else if(number == Tile.MAX_NUMBER - 1){
+				return [new Tile({index: index - 1})];
+			} else {
+				throw new Error("Invalid meld");
+			}
+		}
+		console.error(this.wait);
+		throw new Error("All wait exaused with no match");
+	};
 	PointCalculator.prototype.isValidWait = function(){
 		return this.shanten == 0 && 
 			this.winningTile &&
@@ -544,24 +678,35 @@ function PointCalculator(handDivision, options){
 		var fu = points.fuBreakdown.total;
 		var han = points.han;
 		var basePoints = fu * Math.pow(2, han + 2);
+		var noLimits = basePoints;
 		if(basePoints >= 2000){
 			basePoints = this.getLimitHand(han);
 		}
 		if(this.options.seatWind == Tile.EAST){
+			points.isDealer = true;
+			points.tsumo = this.options.tsumo;
 			if(this.options.tsumo){
-				points.othersPay = Math.round(basePoints * 2 / 100) * 100;
+				points.othersPay = Math.ceil(basePoints * 2 / 100) * 100;
 				points.dealerPays = 0;
+				points.noLimitsOthersPay = Math.ceil(noLimits * 2 / 100) * 100;
+				points.noLimitsDealerPays = 0;
 			} else {
-				points.othersPay = Math.round(basePoints * 6 / 100) * 100;
+				points.othersPay = Math.ceil(basePoints * 6 / 100) * 100;
 				points.dealerPays = 0;
+				points.noLimitsOthersPay = Math.ceil(noLimits * 6 / 100) * 100;
+				points.noLimitsDealerPays = 0;
 			}
 		} else {
 			if(this.options.tsumo){
-				points.othersPay = Math.round(basePoints / 100) * 100;
-				points.dealerPays = Math.round(basePoints * 2 / 100) * 100;
+				points.othersPay = Math.ceil(basePoints / 100) * 100;
+				points.dealerPays = Math.ceil(basePoints * 2 / 100) * 100;
+				points.noLimitsOthersPay = Math.ceil(noLimits / 100) * 100;
+				points.noLimitsDealerPays = Math.ceil(noLimits * 2 / 100) * 100;
 			} else {
-				points.othersPay = Math.round(basePoints * 4/ 100) * 100;
+				points.othersPay = Math.ceil(basePoints * 4/ 100) * 100;
 				points.dealerPays = 0;
+				points.noLimitsOthersPay = Math.ceil(noLimits * 4/ 100) * 100;
+				points.noLimitsDealerPays = 0;
 			}
 		}
 	};
@@ -579,24 +724,38 @@ function PointCalculator(handDivision, options){
 		}
 	};
 	PointCalculator.prototype.calculateFu = function(){
+		var fuBreakdown = this.calculateFuNoRounding();
+		fuBreakdown.total = Math.ceil(fuBreakdown.total / 10) * 10;
+		return fuBreakdown;
+	}
+	PointCalculator.prototype.calculateFuNoRounding = function(){
 		var fuBreakdown = {
-			minkou: 0,
-			ankou: 0,
-			endMinkou: 0,
-			endAnkou: 0,
+			minKou: 0,
+			anKou: 0,
+			endMinKou: 0,
+			endAnKou: 0,
+			minKan: 0,
+			anKan: 0,
+			endMinKan: 0,
+			endAnKan: 0,
 			tsumo: 0,
 			kanchanMachi: 0,
 			penchanMachi: 0,
 			tankiMachi: 0,
 			pair: 0,
+			base: 20,
+			tsumo: 0,
+			menzenRon: 0,
 			total: 20,
 		};
 		if(this.isPinFu()){
 			if(this.options.tsumo){
-				fuBreakdown.total = 30;
+				fuBreakdown.tsumo = 0;
+				fuBreakdown.total = 20;
 				return fuBreakdown;
 			} else {
-				fuBreakdown.total = 20;
+				fuBreakdown.menzenRon = 10;
+				fuBreakdown.total = 30;
 				return fuBreakdown;
 			}
 		}
@@ -605,17 +764,33 @@ function PointCalculator(handDivision, options){
 			fuBreakdown.total = 25;
 			return fuBreakdown;
 		}
-		if(this.options.tsumo) fuBreakdown.total += 2;
+		if(this.options.tsumo){
+			fuBreakdown.tsumo = 2;
+			fuBreakdown.total += 2;
+		} else if(!this.options.tsumo && this.semiClosed){
+			fuBreakdown.menzenRon = 10;
+			fuBreakdown.total += 10;
+		}
 		// Handle closed melds
 		for (var i = 0; i < this.melds.length; i++) {
 			var meld = this.melds[i];
 			if(meld.isPon()){
-				if(meld.getRepresentitiveTile().isEnd()){
-					fuBreakdown.endAnkou += 8;
-					fuBreakdown.total += 8;
+				if(meld.isKan()){
+					if(meld.getRepresentitiveTile().isEnd()){
+						fuBreakdown.endAnKan += 32;
+						fuBreakdown.total += 32;
+					} else {
+						fuBreakdown.anKan += 16;
+						fuBreakdown.total += 16;
+					}
 				} else {
-					fuBreakdown.endAnkou += 4;
-					fuBreakdown.total += 4;
+					if(meld.getRepresentitiveTile().isEnd()){
+						fuBreakdown.endAnKou += 8;
+						fuBreakdown.total += 8;
+					} else {
+						fuBreakdown.anKou += 4;
+						fuBreakdown.total += 4;
+					}
 				}
 			}
 		};
@@ -623,12 +798,22 @@ function PointCalculator(handDivision, options){
 		for (var i = 0; i < this.openMelds.length; i++) {
 			var meld = this.openMelds[i];
 			if(meld.isPon()){
-				if(meld.isEnd()){
-					fuBreakdown.endAnkou += 4;
-					fuBreakdown.total += 4;
+				if(meld.isKan()){
+					if(meld.getRepresentitiveTile().isEnd()){
+						fuBreakdown.endMinKan += 16;
+						fuBreakdown.total += 16;
+					} else {
+						fuBreakdown.minKan += 8;
+						fuBreakdown.total += 8;
+					}
 				} else {
-					fuBreakdown.endAnkou += 2;
-					fuBreakdown.total += 2;
+					if(meld.getRepresentitiveTile().isEnd()){
+						fuBreakdown.endMinKou += 4;
+						fuBreakdown.total += 4;
+					} else {
+						fuBreakdown.minKou += 2;
+						fuBreakdown.total += 2;
+					}
 				}
 			}
 		};
@@ -646,6 +831,10 @@ function PointCalculator(handDivision, options){
 				fuBreakdown.pair += 2;
 				fuBreakdown.total += 2;
 			}
+		}
+		if(this.wait.isTanki()){
+			fuBreakdown.tankiMachi = 2;
+			fuBreakdown.total += 2;
 		}
 		return fuBreakdown;
 	};
@@ -699,6 +888,21 @@ function PointCalculator(handDivision, options){
 		if(!this.wait.isTwoSided()){
 			return false;
 		}
+		if(!this.pair){
+			return false;
+		}
+		var tile = this.pair.getRepresentitiveTile();
+		if(tile.isHonor()){
+			var number = tile.getNumber();
+			if(number == Tile.HAKU ||
+				number == Tile.HATSU ||
+				number == Tile.CHUN){
+				return false;
+			}
+			if(number == this.options.roundWind || number == this.options.seatWind){
+				return false;
+			}
+		}
 		return true;
 	};
 	PointCalculator.prototype.isIiPeiKou = function(){
@@ -708,6 +912,9 @@ function PointCalculator(handDivision, options){
 		// Check every pair of melds
 		for (var i = 0; i < this.allMelds.length; i++) {
 			var meld1 = this.allMelds[i];
+			if(!meld1.isChi()){
+				continue;
+			}
 			for (var j = i + 1; j < this.allMelds.length; j++) {
 				var meld2 = this.allMelds[j];
 				if(meld1.equals(meld2)){
@@ -990,6 +1197,10 @@ function PointCalculator(handDivision, options){
 				return false;
 			}
 		};
+		// Must have at least one of the tile in the suit
+		if(suit == null){
+			return false;
+		}
 		return true;
 	};
 	PointCalculator.prototype.isRyanPeiKou = function(){
@@ -998,6 +1209,9 @@ function PointCalculator(handDivision, options){
 		// Finds an ii pei kou then finds another and makes sure they aren't the same one
 		for (var i = 0; i < this.allMelds.length; i++) {
 			var meld1 = this.allMelds[i];
+			if(!meld1.isChi()){
+				continue;
+			}
 			for (var j = i + 1; j < this.allMelds.length; j++) {
 				var meld2 = this.allMelds[j];
 				if(meld1.equals(meld2)){
@@ -1065,6 +1279,7 @@ function PointCalculator(handDivision, options){
 function HandDivision(hand, shanten){
 	this.melds = [];
 	this.openMelds = [];
+	this.closedKans = [];
 	this.winningTile = null;
 
 	for(var i = 0; i < hand.length; i++){
@@ -1120,6 +1335,10 @@ function HandDivision(hand, shanten){
 		}
 	};
 
+	HandDivision.prototype.getWaits = function(){
+		return this.createPointCalculator().getWaits();
+	}
+
 	HandDivision.prototype.print = function() {
 		var pointCalculator = this.createPointCalculator();
 		if(pointCalculator.isValidWait()){
@@ -1144,6 +1363,10 @@ function HandDivision(hand, shanten){
 	
 	HandDivision.prototype.addOpenMeld = function(meld){
 		this.openMelds.push(meld);
+	}
+
+	HandDivision.prototype.addClosedKan = function(meld){
+		this.closedKans.push(meld);
 	}
 
 	HandDivision.prototype.setWinningTile = function(tile){
@@ -1184,8 +1407,7 @@ function HandCalculator(hand){
 };
 (function(){
 	HandCalculator.prototype.isValid = function(){
-		console.log(this.tileCount % 3 == 0);
-		return !(this.tileCount % 3 == 0);
+		return this.tileCount % 3 == 1;
 	};
 	HandCalculator.prototype.calculate = function(){
 		this.checkChiToi();
@@ -1258,6 +1480,10 @@ function HandCalculator(hand){
 			return;
 		}
 		var count = this.hand[i];
+		// Fake to allow impossible hands
+		if(count > 4){
+			count = 4;
+		}
 		var number = Tile.getNumberFromIndex(i);
 		var suit = Tile.getSuitFromIndex(i);
 		switch(count){
@@ -1367,6 +1593,7 @@ function HandCalculator(hand){
 
 var lib = {
 	Tile: Tile,
+	Meld: Meld,
 	Hand: Hand,
 };
 if(typeof module != 'undefined'){
